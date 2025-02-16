@@ -1,22 +1,50 @@
+import os
 import timm
 import torch
 import matplotlib.pyplot as plt
 
-def plot_params_histograms(model, bins=50):
-    print("Plotting weight histograms...")
+def save_params_histograms(model, bins=50, grid_rows=3, grid_cols=3, save_dir="./histograms/params"):
+    print("Creating directory for saving histograms: ", save_dir)
+    os.makedirs(save_dir, exist_ok=True)
     
+    param_names = []
+    param_values = []
     for name, param in model.named_parameters():
-        param_data = param.detach().cpu().numpy().ravel()
+        param_names.append(name)
+        param_values.append(param.detach().cpu().numpy().ravel())
         
-        plt.figure(figsize=(6, 4))
-        plt.hist(param_data, bins=bins, color='blue', alpha=0.7)
-        plt.title(f'Parameter histogram: {name}')
-        plt.xlabel('Parameter value')
-        plt.ylabel('Frequency')
-        plt.tight_layout()
-        plt.show()
+    total_params = len(param_values)
+    group_size = grid_rows * grid_cols
+    
+    print(f"Plotting parameter histograms in groups of {group_size}...")
+    
+    for start_idx in range(0, total_params, group_size):
+        end_idx = min(start_idx + group_size, total_params)
+        chunk_names = param_names[start_idx:end_idx]
+        chunk_values = param_values[start_idx:end_idx]
         
-    print("Done plotting weight histograms.")
+        fig, axes = plt.subplots(grid_rows, grid_cols, figsize=(4*grid_cols, 3*grid_rows))
+        axes = axes.flatten()
+        
+        for ax_idx, (name, values) in enumerate(zip(chunk_names, chunk_values)):
+            ax = axes[ax_idx]
+            ax.hist(values, bins=bins, color='blue', alpha=0.7)
+            ax.set_title(f"{name}", fontsize=9)
+            ax.set_xlabel("Value", fontsize=8)
+            ax.set_ylabel("Frequency", fontsize=8)
+            ax.tick_params(axis='both', which='major', labelsize=8)
+        
+        for empty_ax_idx in range(len(chunk_names), group_size):
+            fig.delaxes(axes[empty_ax_idx])
+        
+        fig.tight_layout()
+        
+        group_id = start_idx // group_size
+        save_path = os.path.join(save_dir, f"params_histogram_{group_id}.png")
+        plt.savefig(save_path, dpi=200)
+        plt.close(fig)
+    
+    print("Done plotting and saving parameter histograms.\n")
 
 def activation_hook(layer_name, activations_dict):
     def hook(module, input, output):
@@ -24,28 +52,53 @@ def activation_hook(layer_name, activations_dict):
         activations_dict[layer_name] = output.detach().cpu().numpy().ravel()
     return hook
 
-def plot_activations_histograms(model, input_tensor, bins=50):
-    print("Registering forward hooks for activation histograms...")
+def save_activations_histograms(model, input_tensor, bins=50, grid_rows=3, grid_cols=3, save_dir="./histograms/activations"):
+    print("Creating directory for activation histograms: ", save_dir)
+    os.makedirs(save_dir, exist_ok=True)
+
     activations = {}
 
     for name, module in model.named_modules():
-        # For demonstration purposes, the code hooks all activation layers:
         module.register_forward_hook(activation_hook(name, activations))
-    
-    print("Running forward pass...")
+
+    print("Running forward pass for activation collection...")
     with torch.no_grad():
         _ = model(input_tensor)
 
-    print("Plotting activation histograms...")
-    for layer_name, act_values in activations.items():
-        plt.figure(figsize=(6, 4))
-        plt.hist(act_values, bins=bins, color="green", alpha=0.7)
-        plt.title(f"Activation Histogram: {layer_name}")
-        plt.xlabel("Activation Value")
-        plt.ylabel("Frequency")
-        plt.tight_layout()
-        plt.show()
-    print("Done plotting activation histograms.\n")
+    layer_names = list(activations.keys())
+    layer_acts = list(activations.values())
+    total_layers = len(layer_acts)
+    group_size = grid_rows * grid_cols
+
+    print(f"Plotting activation histograms in groups of {group_size}...")
+    for start_idx in range(0, total_layers, group_size):
+        end_idx = min(start_idx + group_size, total_layers)
+        chunk_names = layer_names[start_idx:end_idx]
+        chunk_values = layer_acts[start_idx:end_idx]
+
+        fig, axes = plt.subplots(grid_rows, grid_cols, figsize=(4*grid_cols, 3*grid_rows))
+        axes = axes.flatten()
+
+        for ax_idx, (name, values) in enumerate(zip(chunk_names, chunk_values)):
+            ax = axes[ax_idx]
+            ax.hist(values, bins=bins, color='green', alpha=0.7)
+            ax.set_title(f"{name}", fontsize=9)
+            ax.set_xlabel("Value", fontsize=8)
+            ax.set_ylabel("Frequency", fontsize=8)
+            ax.tick_params(axis='both', which='major', labelsize=8)
+
+        for empty_ax_idx in range(len(chunk_names), group_size):
+            fig.delaxes(axes[empty_ax_idx])
+
+        fig.tight_layout()
+
+        group_id = start_idx // group_size
+        save_path = os.path.join(save_dir, f"activations_hist_group_{group_id}.png")
+        plt.savefig(save_path, dpi=200)
+        plt.close(fig)
+
+    print("Done plotting and saving activation histograms.\n")
+
 
 def main():
     # ---------------------
@@ -59,7 +112,7 @@ def main():
     # ---------------------
     # 2. Plot Parameter Histograms
     # ---------------------
-    plot_params_histograms(model, bins=50)
+    save_params_histograms(model, bins=50, grid_rows=3, grid_cols=3, save_dir="./histograms/params")
 
     # ---------------------
     # 3. Define an input tensor for activations
@@ -71,7 +124,7 @@ def main():
     # ---------------------
     # 4. Plot Activation Histograms
     # ---------------------
-    plot_activations_histograms(model, dummy_input, bins=50)
+    save_activations_histograms(model, dummy_input, bins=50, grid_rows=3, grid_cols=3, save_dir="./histograms/activations")
 
 
 if __name__ == "__main__":
